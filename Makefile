@@ -10,8 +10,8 @@ NCORES = $(shell grep -c ^processor /proc/cpuinfo)
 VIVADO_SETTINGS ?= /opt/Xilinx/Vivado/$(VIVADO_VERSION)/settings64.sh
 VSUBDIRS = hdl buildroot linux u-boot-xlnx
 
-VERSION=$(shell git describe --abbrev=4 --dirty --always --tags)
-LATEST_TAG=$(shell git describe --abbrev=0 --tags)
+VERSION=v0.38_ts
+LATEST_TAG=v0.38
 UBOOT_VERSION=$(shell echo -n "PlutoSDR " && cd u-boot-xlnx && git describe --abbrev=0 --dirty --always --tags)
 HAVE_VIVADO= $(shell bash -c "source $(VIVADO_SETTINGS) > /dev/null 2>&1 && vivado -version > /dev/null 2>&1 && echo 1 || echo 0")
 XSA_URL ?= http://github.com/analogdevicesinc/plutosdr-fw/releases/download/${LATEST_TAG}/system_top.xsa
@@ -58,7 +58,15 @@ endif
 
 TARGET_DTS_FILES:=$(foreach dts,$(TARGET_DTS_FILES),build/$(dts))
 
-TOOLCHAIN:
+# Check and generate system_top.bit.bin if it does not exist
+buildroot/overlay/lib/firmware/system_top.bit.bin:
+	if [ ! -f $@ ]; then \
+		$(MAKE) -C zynq_timestamping/projects/pluto gen-boot; \
+		cp zynq_timestamping/projects/pluto/bootfiles/system_top.bit.bin $@; \
+	fi
+
+
+TOOLCHAIN: buildroot/overlay/lib/firmware/system_top.bit.bin
 	make -C buildroot ARCH=arm zynq_$(TARGET)_defconfig
 	make -C buildroot toolchain
 
@@ -108,7 +116,7 @@ build/%.dtb: linux/arch/arm/boot/dts/%.dtb | build
 
 ### Buildroot ###
 
-buildroot/output/images/rootfs.cpio.gz:
+buildroot/output/images/rootfs.cpio.gz: buildroot/overlay/lib/firmware/system_top.bit.bin
 	@echo device-fw $(VERSION)> $(CURDIR)/buildroot/board/$(TARGET)/VERSIONS
 	@$(foreach dir,$(VSUBDIRS),echo $(dir) $(shell cd $(dir) && git describe --abbrev=4 --dirty --always --tags) >> $(CURDIR)/buildroot/board/$(TARGET)/VERSIONS;)
 	make -C buildroot ARCH=arm zynq_$(TARGET)_defconfig
